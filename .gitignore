@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+forward_like
+forward_like_lang
+forward_like_merge
+forward_like_tuple

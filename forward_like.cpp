@@ -1,311 +1,135 @@
-#include <tuple>
-#include <type_traits>
-#include <utility>
+#include "forward_like.hpp"
 
-template <typename T, typename U>
-concept _similar =
-    std::is_same_v<std::remove_cvref_t<T>, std::remove_cvref_t<U>>;
+#include <memory>
+#include <string>
 
-template <typename T, typename U>
-using _copy_ref_t = std::conditional_t<
-    std::is_rvalue_reference_v<T>, U &&,
-    std::conditional_t<std::is_lvalue_reference_v<T>, U &, U>>;
-
-template <typename T, typename U>
-using _copy_const_t =
-    std::conditional_t<std::is_const_v<std::remove_reference_t<T>>,
-                       _copy_ref_t<U, std::remove_reference_t<U> const>, U>;
-
-template <typename T>
-constexpr bool _is_reference_v =
-    std::is_lvalue_reference_v<T> || std::is_rvalue_reference_v<T>;
-
-template <typename T, typename U>
-using _copy_cvref_t = _copy_ref_t<T &&, _copy_const_t<T, U>>;
-
-template <typename T, typename U>
-using _fwd_like_tuple_t =
-    std::conditional_t<_is_reference_v<U>, _copy_ref_t<T, U>,
-                       _copy_cvref_t<T, U>>;
-
-template <typename T, typename U>
-using _fwd_like_lang_t =
-    std::conditional_t<_is_reference_v<U>, U &,
-                       _copy_ref_t<T, _copy_const_t<T, U>> &&>;
-
-// implementation
-template <typename T, typename M, _similar<M> U>
-auto forward_like_tuple(U &&x) noexcept -> decltype(auto) {
-  return static_cast<_fwd_like_tuple_t<T, M>>(x);
-}
-
-template <typename T, typename M, _similar<M> U>
-auto forward_like_lang(U &&x) noexcept -> decltype(auto) {
-  return static_cast<_fwd_like_lang_t<T, _copy_const_t<U, M>>>(x);
-}
-
-template <typename T, typename M, _similar<M> U>
-auto forward(U &&x) noexcept -> decltype(auto) {
-  return forward_like_tuple<T, M>(static_cast<U &&>(x));
-}
-
-// test utilities
-#define FWD(...) std::forward<decltype((__VA_ARGS__))>(__VA_ARGS__)
 struct probe {};
+
 template <typename M> struct S {
   M m;
   using value_type = M;
 };
 
-template <typename T>
-using fwd_type = decltype((std::forward<T>(std::declval<T>()).m));
-
-template <typename T>
-using like_type_lang =
-    decltype(forward_like_lang<T, decltype(std::declval<T>().m)>(
-        std::declval<T>().m));
-
-template <typename Expected, typename Actual> constexpr void is_same_exp() {
-  static_assert(std::is_same_v<Expected, Actual>);
-}
-
-template <typename Fwd, typename FwdLike> constexpr void is_same_fwd() {
-  static_assert(std::is_same_v<Fwd, FwdLike>);
-}
-
-template <typename T, typename Expected> void test_like_tuple() {
+template <typename T, typename Merge, typename Tuple, typename Lang>
+void test() {
   using value_type = typename std::remove_cvref_t<T>::value_type;
-  using like_1 = decltype(forward_like_tuple<T, decltype(std::declval<T>().m)>(
-      std::declval<T>().m));
-  using like_2 =
-      decltype(forward_like_tuple<T, value_type>(std::declval<T>().m));
 
-  using tuple_like_T = _copy_cvref_t<T, std::tuple<value_type>>;
-  using tuple_does = decltype(std::get<0>(std::declval<tuple_like_T>()));
-  is_same_exp<Expected, tuple_does>(); // test expectations on tuple
-  is_same_exp<Expected, like_1>();
-  is_same_exp<Expected, like_2>();
+  using mrg = decltype(fmrg::forward_like<T>(std::declval<value_type>()));
+  using tpl_model = decltype(std::get<0>(
+      std::declval<_copy_cvref_t<T, std::tuple<value_type>>>()));
+  using tpl =
+      decltype(ftpl::forward<T, value_type>(std::declval<value_type>()));
+  using lng_model = decltype((std::forward<T>(std::declval<T>()).m));
+  using lng =
+      decltype(flang::forward<T, value_type>(std::declval<value_type>()));
+
+  is_same<Merge, mrg>();
+  is_same<Tuple, tpl>();
+  is_same<Lang, lng>();
+  // sanity checks
+  is_same<Tuple, tpl_model>();
+  is_same<Lang, lng_model>();
 }
 
-template <typename T, typename Expected> void test_forward() {
-  using value_type = typename std::remove_cvref_t<T>::value_type;
-  using like_1 =
-      decltype(forward<T, decltype(std::declval<T>().m)>(std::declval<T>().m));
-  using like_2 = decltype(forward<T, value_type>(std::declval<T>().m));
-
-  is_same_exp<Expected, like_1>();
-  is_same_exp<Expected, like_2>();
+void test() {
+  using p = probe;
+  // clang-format off
+  //   TEST TYPE             ,'merge'    ,'tuple'    ,'language'
+  test<S<p         >         , p &&      , p &&      , p &&      >();
+  test<S<p         > &       , p &       , p &       , p &       >();
+  test<S<p         > &&      , p &&      , p &&      , p &&      >();
+  test<S<p         > const   , p const &&, p const &&, p const &&>();
+  test<S<p         > const & , p const & , p const & , p const & >();
+  test<S<p         > const &&, p const &&, p const &&, p const &&>();
+  test<S<p &       >         , p &&      , p &       , p &       >();
+  test<S<p &       > &       , p &       , p &       , p &       >();
+  test<S<p &       > &&      , p &&      , p &       , p &       >();
+  test<S<p &       > const   , p const &&, p &       , p &       >();
+  test<S<p &       > const & , p const & , p &       , p &       >();
+  test<S<p &       > const &&, p const &&, p &       , p &       >();
+  test<S<p &&      >         , p &&      , p &&      , p &       >();
+  test<S<p &&      > &       , p &       , p &       , p &       >();
+  test<S<p &&      > &&      , p &&      , p &&      , p &       >();
+  test<S<p &&      > const   , p const &&, p &&      , p &       >();
+  test<S<p &&      > const & , p const & , p &       , p &       >();
+  test<S<p &&      > const &&, p const &&, p &&      , p &       >();
+  test<S<p const   >         , p const &&, p const &&, p const &&>();
+  test<S<p const   > &       , p const & , p const & , p const & >();
+  test<S<p const   > &&      , p const &&, p const &&, p const &&>();
+  test<S<p const   > const   , p const &&, p const &&, p const &&>();
+  test<S<p const   > const & , p const & , p const & , p const & >();
+  test<S<p const   > const &&, p const &&, p const &&, p const &&>();
+  test<S<p const & >         , p const &&, p const & , p const & >();
+  test<S<p const & > &       , p const & , p const & , p const & >();
+  test<S<p const & > &&      , p const &&, p const & , p const & >();
+  test<S<p const & > const   , p const &&, p const & , p const & >();
+  test<S<p const & > const & , p const & , p const & , p const & >();
+  test<S<p const & > const &&, p const &&, p const & , p const & >();
+  test<S<p const &&>         , p const &&, p const &&, p const & >();
+  test<S<p const &&> &       , p const & , p const & , p const & >();
+  test<S<p const &&> &&      , p const &&, p const &&, p const & >();
+  test<S<p const &&> const   , p const &&, p const &&, p const & >();
+  test<S<p const &&> const & , p const & , p const & , p const & >();
+  test<S<p const &&> const &&, p const &&, p const &&, p const & >();
+  // clang-format on
 }
 
-int test_forward_like_tuple() {
-  test_like_tuple<S<probe>, probe &&>();
-  test_like_tuple<S<probe> &, probe &>();
-  test_like_tuple<S<probe> &&, probe &&>();
-  test_like_tuple<S<probe> const, probe const &&>();
-  test_like_tuple<S<probe> const &, probe const &>();
-  test_like_tuple<S<probe> const &&, probe const &&>();
-  test_like_tuple<S<probe &>, probe &>();
-  test_like_tuple<S<probe &> &, probe &>();
-  test_like_tuple<S<probe &> &&, probe &>();
-  test_like_tuple<S<probe &> const, probe &>();
-  test_like_tuple<S<probe &> const &, probe &>();
-  test_like_tuple<S<probe &> const &&, probe &>();
-  test_like_tuple<S<probe &&>, probe &&>();
-  test_like_tuple<S<probe &&> &, probe &>();
-  test_like_tuple<S<probe &&> &&, probe &&>();
-  test_like_tuple<S<probe &&> const, probe &&>();
-  test_like_tuple<S<probe &&> const &, probe &>();
-  test_like_tuple<S<probe &&> const &&, probe &&>();
-  test_like_tuple<S<probe const>, probe const &&>();
-  test_like_tuple<S<probe const> &, probe const &>();
-  test_like_tuple<S<probe const> &&, probe const &&>();
-  test_like_tuple<S<probe const> const, probe const &&>();
-  test_like_tuple<S<probe const> const &, probe const &>();
-  test_like_tuple<S<probe const> const &&, probe const &&>();
-  test_like_tuple<S<probe const &>, probe const &>();
-  test_like_tuple<S<probe const &> &, probe const &>();
-  test_like_tuple<S<probe const &> &&, probe const &>();
-  test_like_tuple<S<probe const &> const, probe const &>();
-  test_like_tuple<S<probe const &> const &, probe const &>();
-  test_like_tuple<S<probe const &> const &&, probe const &>();
-  test_like_tuple<S<probe const &&>, probe const &&>();
-  test_like_tuple<S<probe const &&> &, probe const &>();
-  test_like_tuple<S<probe const &&> &&, probe const &&>();
-  test_like_tuple<S<probe const &&> const, probe const &&>();
-  test_like_tuple<S<probe const &&> const &, probe const &>();
-  test_like_tuple<S<probe const &&> const &&, probe const &&>();
-
+void test_lambdas() {
   probe x;
+  probe z;
+  auto l = [x, &y = x, z](auto &&self) mutable {
+    // correct, this is what we *meant*, consistently
+    // If we didn't mean to forward the capture, we wouldn't have used
+    // forward_like.
+    is_same<_override_ref_t<decltype(self), probe>,
+            decltype(fmrg::forward_like<decltype(self)>(y))>();
+    is_same<_override_ref_t<decltype(self), probe>,
+            decltype(fmrg::forward_like<decltype(self)>(x))>();
+    is_same<_override_ref_t<decltype(self), probe>,
+            decltype(fmrg::forward_like<decltype(self)>(z))>();
 
-  {
-    // by-value
-    auto l = [x](auto &&self) mutable -> decltype(auto) {
-      is_same_exp<_copy_ref_t<decltype(self), probe>,
-                  decltype(forward_like_tuple<decltype(self), decltype(x)>(
-                      x))>();
-    };
-    l(l);            // lvalue-call emulation
-    l(std::move(l)); // sortish like a this-auto-self with a && call operator
-  }
-  {
-    // by-ref capture
-    auto l = [&x, &y = x](auto &&self) mutable {
-      is_same_exp<probe &, decltype(forward_like_tuple<decltype(self),
-                                                       decltype(y)>(y))>();
-      // WRONG! we don't own X, and yet we move
-      is_same_exp<_copy_ref_t<decltype(self), probe>,
-                  decltype(forward_like_lang<decltype(self), decltype(x)>(
-                      x))>();
-    };
-    l(l);            // lvalue-call emulation
-    l(std::move(l)); // sortish like a this-auto-self with a && call operator
-  }
+    // x and y behave differently with the tuple model (problem)
+    is_same<probe &, decltype(ftpl::forward<decltype(self), decltype(y)>(y))>();
+    is_same<_override_ref_t<decltype(self), probe>,
+            decltype(ftpl::forward<decltype(self), decltype(x)>(x))>();
+    is_same<_override_ref_t<decltype(self), probe>,
+            decltype(ftpl::forward<decltype(self), decltype(z)>(z))>();
 
-  return 0;
+    // x and y behave differently with the language model (problem)
+    is_same<probe &,
+            decltype(flang::forward<decltype(self), decltype(y)>(y))>();
+    is_same<_override_ref_t<decltype(self), probe>,
+            decltype(flang::forward<decltype(self), decltype(x)>(x))>();
+    is_same<_override_ref_t<decltype(self), probe>,
+            decltype(flang::forward<decltype(self), decltype(z)>(z))>();
+  };
+  l(l);            // lvalue-call emulation
+  l(std::move(l)); // sortish like a this-auto-self with a && call operator
 }
 
-int test_forward() {
-  test_forward<S<probe>, probe &&>();
-  test_forward<S<probe> &, probe &>();
-  test_forward<S<probe> &&, probe &&>();
-  test_forward<S<probe> const, probe const &&>();
-  test_forward<S<probe> const &, probe const &>();
-  test_forward<S<probe> const &&, probe const &&>();
-  test_forward<S<probe &>, probe &>();
-  test_forward<S<probe &> &, probe &>();
-  test_forward<S<probe &> &&, probe &>();
-  test_forward<S<probe &> const, probe &>();
-  test_forward<S<probe &> const &, probe &>();
-  test_forward<S<probe &> const &&, probe &>();
-  test_forward<S<probe &&>, probe &&>();
-  test_forward<S<probe &&> &, probe &>();
-  test_forward<S<probe &&> &&, probe &&>();
-  test_forward<S<probe &&> const, probe &&>();
-  test_forward<S<probe &&> const &, probe &>();
-  test_forward<S<probe &&> const &&, probe &&>();
-  test_forward<S<probe const>, probe const &&>();
-  test_forward<S<probe const> &, probe const &>();
-  test_forward<S<probe const> &&, probe const &&>();
-  test_forward<S<probe const> const, probe const &&>();
-  test_forward<S<probe const> const &, probe const &>();
-  test_forward<S<probe const> const &&, probe const &&>();
-  test_forward<S<probe const &>, probe const &>();
-  test_forward<S<probe const &> &, probe const &>();
-  test_forward<S<probe const &> &&, probe const &>();
-  test_forward<S<probe const &> const, probe const &>();
-  test_forward<S<probe const &> const &, probe const &>();
-  test_forward<S<probe const &> const &&, probe const &>();
-  test_forward<S<probe const &&>, probe const &&>();
-  test_forward<S<probe const &&> &, probe const &>();
-  test_forward<S<probe const &&> &&, probe const &&>();
-  test_forward<S<probe const &&> const, probe const &&>();
-  test_forward<S<probe const &&> const &, probe const &>();
-  test_forward<S<probe const &&> const &&, probe const &&>();
+struct owns_far_string {
+  std::unique_ptr<std::string> s;
+};
 
-  probe x;
+void test_far_objects() {
+  // problem is that *unique_ptr returns a reference
+  owns_far_string fs;
+  auto l = [](auto &&fs) {
+    using mrg = decltype(fmrg::forward_like<decltype(fs)>(*fs.s));
+    using tpl = decltype(ftpl::forward<decltype(fs), decltype(*fs.s)>(*fs.s));
+    using lng = decltype(flang::forward<decltype(fs), decltype(*fs.s)>(*fs.s));
 
-  {
-    // by-value
-    auto l = [x](auto &&self) mutable {
-      is_same_exp<_copy_ref_t<decltype(self), probe>,
-                  decltype(forward<decltype(self), decltype(x)>(x))>();
-    };
-    l(l);            // lvalue-call emulation
-    l(std::move(l)); // sortish like a this-auto-self with a && call operator
-  }
-  {
-    // by-ref capture
-    auto l = [&x, &y = x](auto &&self) mutable {
-      is_same_exp<probe &, decltype(forward<decltype(self), decltype(y)>(y))>();
-      // WRONG! we don't own X, and yet we move
-      is_same_exp<_copy_ref_t<decltype(self), probe>,
-                  decltype(forward<decltype(self), decltype(x)>(x))>();
-    };
-    l(l);            // lvalue-call emulation
-    l(std::move(l)); // sortish like a this-auto-self with a && call operator
-  }
-
-  return 0;
-}
-
-template <typename T, typename Expected> void test_like_lang() {
-  using fwd = fwd_type<T>;
-  using like = like_type_lang<T>;
-  using diff = decltype(FWD(std::declval<T>().m));
-  is_same_exp<Expected, fwd>(); // test expectations on std::forward
-  is_same_fwd<fwd, like>();
-  is_same_fwd<diff, fwd>();
-}
-
-int test_forward_like_lang() {
-  test_like_lang<S<probe>, probe &&>();
-  test_like_lang<S<probe> &, probe &>();
-  test_like_lang<S<probe> &&, probe &&>();
-  test_like_lang<S<probe> const, probe const &&>();
-  test_like_lang<S<probe> const &, probe const &>();
-  test_like_lang<S<probe> const &&, probe const &&>();
-  test_like_lang<S<probe &>, probe &>();
-  test_like_lang<S<probe &> &, probe &>();
-  test_like_lang<S<probe &> &&, probe &>();
-  test_like_lang<S<probe &> const, probe &>();
-  test_like_lang<S<probe &> const &, probe &>();
-  test_like_lang<S<probe &> const &&, probe &>();
-  test_like_lang<S<probe &&>, probe &>();
-  test_like_lang<S<probe &&> &, probe &>();
-  test_like_lang<S<probe &&> &&, probe &>();
-  test_like_lang<S<probe &&> const, probe &>();
-  test_like_lang<S<probe &&> const &, probe &>();
-  test_like_lang<S<probe &&> const &&, probe &>();
-  test_like_lang<S<probe const>, probe const &&>();
-  test_like_lang<S<probe const> &, probe const &>();
-  test_like_lang<S<probe const> &&, probe const &&>();
-  test_like_lang<S<probe const> const, probe const &&>();
-  test_like_lang<S<probe const> const &, probe const &>();
-  test_like_lang<S<probe const> const &&, probe const &&>();
-  test_like_lang<S<probe const &>, probe const &>();
-  test_like_lang<S<probe const &> &, probe const &>();
-  test_like_lang<S<probe const &> &&, probe const &>();
-  test_like_lang<S<probe const &> const, probe const &>();
-  test_like_lang<S<probe const &> const &, probe const &>();
-  test_like_lang<S<probe const &> const &&, probe const &>();
-  test_like_lang<S<probe const &&>, probe const &>();
-  test_like_lang<S<probe const &&> &, probe const &>();
-  test_like_lang<S<probe const &&> &&, probe const &>();
-  test_like_lang<S<probe const &&> const, probe const &>();
-  test_like_lang<S<probe const &&> const &, probe const &>();
-  test_like_lang<S<probe const &&> const &&, probe const &>();
-
-  probe x;
-
-  {
-    // by-value
-    auto l = [x](auto &&self) mutable {
-      is_same_exp<_copy_ref_t<decltype(self), probe>,
-                  decltype(forward_like_lang<decltype(self), decltype(x)>(
-                      x))>();
-    };
-    l(l);            // lvalue-call emulation
-    l(std::move(l)); // sortish like a this-auto-self with a && call operator
-  }
-  {
-    // by-ref capture
-    auto l = [&x, &y = x](auto &&self) mutable {
-      // correct
-      is_same_exp<probe &, decltype(forward_like_lang<decltype(self),
-                                                      decltype(y)>(y))>();
-      // WRONG! we don't own X, and yet we move
-      is_same_exp<_copy_ref_t<decltype(self), probe>,
-                  decltype(forward_like_lang<decltype(self), decltype(x)>(
-                      x))>();
-    };
-    l(l);            // lvalue-call emulation
-    l(std::move(l)); // sortish like a this-auto-self with a && call operator
-  }
-
-  return 0;
+    // fit for purpose
+    is_same<_override_ref_t<decltype(fs), std::string>, mrg>();
+    // these are not fit for purpose
+    is_same<std::string &, tpl>();
+    is_same<std::string &, lng>();
+  };
+  l(fs);
+  l(std::move(fs));
 }
 
 int main() {
-  test_forward_like_tuple();
-  test_forward_like_lang();
+  test();
+  test_lambdas();
 }
