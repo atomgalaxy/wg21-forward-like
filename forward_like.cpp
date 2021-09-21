@@ -41,35 +41,36 @@ void test() {
   test<S<p         > const   , p const &&, p const &&, p const &&>();
   test<S<p         > const & , p const & , p const & , p const & >();
   test<S<p         > const &&, p const &&, p const &&, p const &&>();
-  test<S<p &       >         , p &&      , p &       , p &       >();
-  test<S<p &       > &       , p &       , p &       , p &       >();
-  test<S<p &       > &&      , p &&      , p &       , p &       >();
-  test<S<p &       > const   , p const &&, p &       , p &       >();
-  test<S<p &       > const & , p const & , p &       , p &       >();
-  test<S<p &       > const &&, p const &&, p &       , p &       >();
-  test<S<p &&      >         , p &&      , p &&      , p &       >();
-  test<S<p &&      > &       , p &       , p &       , p &       >();
-  test<S<p &&      > &&      , p &&      , p &&      , p &       >();
-  test<S<p &&      > const   , p const &&, p &&      , p &       >();
-  test<S<p &&      > const & , p const & , p &       , p &       >();
-  test<S<p &&      > const &&, p const &&, p &&      , p &       >();
   test<S<p const   >         , p const &&, p const &&, p const &&>();
   test<S<p const   > &       , p const & , p const & , p const & >();
   test<S<p const   > &&      , p const &&, p const &&, p const &&>();
   test<S<p const   > const   , p const &&, p const &&, p const &&>();
   test<S<p const   > const & , p const & , p const & , p const & >();
   test<S<p const   > const &&, p const &&, p const &&, p const &&>();
-  test<S<p const & >         , p const &&, p const & , p const & >();
+  test<S<p &       > &       , p &       , p &       , p &       >();
+  test<S<p &&      > &       , p &       , p &       , p &       >();
   test<S<p const & > &       , p const & , p const & , p const & >();
+  test<S<p const &&> &       , p const & , p const & , p const & >();
+  test<S<p const & > const & , p const & , p const & , p const & >();
+  test<S<p const &&> const & , p const & , p const & , p const & >();
+
+  test<S<p &       >         , p &&      , p &       , p &       >();
+  test<S<p &       > &&      , p &&      , p &       , p &       >();
+  test<S<p &       > const   , p const &&, p &       , p &       >();
+  test<S<p &       > const & , p const & , p &       , p &       >();
+  test<S<p &       > const &&, p const &&, p &       , p &       >();
+  test<S<p &&      >         , p &&      , p &&      , p &       >();
+  test<S<p &&      > &&      , p &&      , p &&      , p &       >();
+  test<S<p &&      > const   , p const &&, p &&      , p &       >();
+  test<S<p &&      > const & , p const & , p &       , p &       >();
+  test<S<p &&      > const &&, p const &&, p &&      , p &       >();
+  test<S<p const & >         , p const &&, p const & , p const & >();
   test<S<p const & > &&      , p const &&, p const & , p const & >();
   test<S<p const & > const   , p const &&, p const & , p const & >();
-  test<S<p const & > const & , p const & , p const & , p const & >();
   test<S<p const & > const &&, p const &&, p const & , p const & >();
   test<S<p const &&>         , p const &&, p const &&, p const & >();
-  test<S<p const &&> &       , p const & , p const & , p const & >();
   test<S<p const &&> &&      , p const &&, p const &&, p const & >();
   test<S<p const &&> const   , p const &&, p const &&, p const & >();
-  test<S<p const &&> const & , p const & , p const & , p const & >();
   test<S<p const &&> const &&, p const &&, p const &&, p const & >();
   // clang-format on
 }
@@ -125,8 +126,8 @@ void test_far_objects() {
     is_same<std::string &, tpl>();
     is_same<std::string &, lng>();
   };
-  l(fs);
-  l(std::move(fs));
+  l(fs);            // lvalue call
+  l(std::move(fs)); // rvalue call - we want to move the string out
 }
 
 int main() {
