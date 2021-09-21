@@ -133,4 +133,5 @@ void test_far_objects() {
 int main() {
   test();
   test_lambdas();
+  test_far_objects();
 }

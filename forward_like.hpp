@@ -37,7 +37,13 @@ auto forward(U &&x) noexcept -> decltype(auto) {
 
 namespace fmrg {
 template <typename T, typename U>
-using _fwd_like_merge_t = _override_ref_t<T &&, _copy_const_t<T, U>>;
+using _copy_const_t =
+    std::conditional_t<std::is_const_v<std::remove_reference_t<T>>, U const, U>;
+
+template <typename T, typename U>
+using _fwd_like_merge_t =
+    _override_ref_t<T &&, _copy_const_t<T, std::remove_reference_t<U>>>;
+
 template <typename T, typename U>
 auto forward_like(U &&x) noexcept -> decltype(auto) {
   return static_cast<_fwd_like_merge_t<T, U>>(x);
