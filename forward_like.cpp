@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 struct probe {};
 
@@ -128,6 +129,24 @@ void test_far_objects() {
   };
   l(fs);            // lvalue call
   l(std::move(fs)); // rvalue call - we want to move the string out
+}
+
+struct accessor {
+  std::vector<std::string> *container;
+
+  friend auto get(auto &&self, size_t i) -> decltype(auto) {
+    return fmrg::forward_like<decltype(self)>((*self.container)[i]);
+  }
+};
+void g() {
+  using namespace std::literals;
+  std::vector v{"a"s, "b"s};
+  accessor a{&v};
+  std::string &x = get(a, 0);             // OK, binds to lvalue reference
+  std::string &&y = get(std::move(a), 0); // OK, is rvalue reference
+  std::string const &&z = get(std::move(std::as_const(a)), 1); // OK, is const&&
+  // std::string &w =
+  //     get(std::as_const(a), 1); // error: will not bind to non-const
 }
 
 int main() {
